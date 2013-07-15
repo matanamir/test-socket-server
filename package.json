@@ -1,0 +1,31 @@
+{
+    "name": "test-socket-server",
+    "version": "0.0.1",
+    "author": "Matan Amir <github-contrib@ematan.com> (http://www.n0tw0rthy.com)",
+    "description": "Test socket server that sends back variable framed random data",
+    "main": "index.js",
+    "dependencies": {
+        "framing-buffer": "*",
+        "offset-buffer": "*",
+        "when": "*"
+    },
+    "devDependencies": {
+        "tap": "*",
+        "framing-socket": "*"
+    },
+    "license": {
+        "type": "MIT",
+        "url": "https://github.com/matanamir/test-socket-server/raw/master/LICENSE"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git@github.com:matanamir/test-socket-server.git"
+    },
+    "scripts": {
+        "test": "node ftest/test-socket-server-ftest.js"
+    },
+    "keywords": [
+        "socket",
+        "server"
+    ]
+}
