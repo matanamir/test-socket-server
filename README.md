@@ -20,6 +20,55 @@ And returns random data between 100 and 2048 bytes in the following format:
 
 Data is sent in Big-endian.
 
+## Usage
+
+Instantiate the TestSocketServer with some parameters to control how it behaves:
+
+```js
+var TestSocketServer = require('test-socket-server');
+
+// use defaults
+var server = new TestSocketServer();
+
+// or set some specific behavior so the server gets "stuck" before it sends a response
+// as stays stuck for 10000ms.
+var server = new TestSocketServer({
+    stuck_ms: 10000,
+    stuck_before_response: true
+});
+
+// connect to it....
+
+```
+
+The default options are:
+
+```js
+{
+    timeout_ms: 60000,
+    stuck_ms: 30000,
+    stuck_before_response: false,
+    stuck_partial_response: false
+}
+```
+
+And the explanation for each parameter:
+
+### Start up parameters
+
+*timeout_ms*: Main socket timeout.  If no activity occurs on a socket for this time,
+it will close the connection.
+
+*stuck_ms*: Amount of time to stay "stuck" if one of the stuck situations is enabled
+
+*stuck_before_response*: Server will stop sending data (stuck) after receiving a request
+and before a response is sent for stuck_ms. This does not drop the connection until the
+timeout_ms passes or the client ends the connection.
+
+*stuck_partial_response*: Server will stop sending data (stuck) after receiving a request
+and after partial response data is sent for stuck_ms. This does not drop the connection until
+the timeout_ms passes or the client ends the connection.
+
 ## Install
 
 ```
