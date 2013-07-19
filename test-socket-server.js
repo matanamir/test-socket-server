@@ -20,11 +20,6 @@
 module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) {
 
     /**
-     * Socket timeout in MS
-     */
-    var TIMEOUT_MS = 10000;
-
-    /**
      * Minimum size of random response payload (inclusive)
      */
     var RESPONSE_PAYLOAD_MIN = 100;
@@ -41,21 +36,59 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
 
     /**
      * You can provide options to override the defaults: {
-     *      timeout_ms: 10000
+     *      timeout_ms: 60000,
+     *      stuck_ms: 30000,
+     *      stuck_before_response: false,
+     *      stuck_partial_response: false
      * }
+     *
+     * timeout_ms: Main socket timeout.  If no activity occurs on a socket for this time, it will
+     *      close the connection.
+     *
+     * stuck_ms: Amount of time to stay "stuck" if one of the stuck situations is enabled
+     *
+     * stuck_before_response: Server will stop sending data (stuck) after receiving a request
+     *      and before a response is sent for stuck_ms.  This does not drop the connection until the
+     *      timeout_ms passes or the client ends the connection.
+     *
+     * stuck_partial_response: Server will stop sending data (stuck) after receiving a request
+     *      and after part of the response is sent for stuck_ms.  This does not drop the connection
+     *      until the timeout_ms passes or the client ends the connection.
+     *
      */
     function TestSocketServer(options) {
         var self = this;
+
+        options = options || {};
+
+        /**
+         * Server side socket timeout (connection will be ended after this amount of inactivity).
+         */
+        this.timeout_ms = options.timeout_ms || 60000;
+
+        /**
+         * Amount of time to stay "stuck" if one of the other stuck if stuckness is enabled
+         */
+        this.stuck_ms = options.stuck_ms || 30000;
+
+        /**
+         * Server will stop sending data (stuck) after receiving a request
+         * and before a response is sent.  This does not drop the connection until the timeout_ms
+         * passes or the client ends the connection.
+         */
+        this.stuck_before_response = options.stuck_before_response || false;
+
+        /**
+         * Server will stop sending data (stuck) after receiving a request
+         * and after part of the response is sent.  This does not drop the connection until the
+         * timeout_ms passes or the client ends the connection.
+         */
+        this.stuck_partial_response = options.stuck_partial_response || false;
 
         /**
          * Keeps track of the current buffering state per connection
          */
         this.connection_state = {};
-
-        /**
-         * The server side connection timeout settings
-         */
-        this.timeout_ms = (options && options.timeout_ms) ? options.timeout_ms : TIMEOUT_MS;
 
         /**
          * Start up the TCP server save the server instance
@@ -151,6 +184,9 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
         framing_buffer.on('frame', function on_frame(frame) {
             self.on_frame(connection, frame);
         });
+        connection.on('error', function on_connection_error(err) {
+            self.on_connection_error(connection, err);
+        });
         connection.on('end', function on_connection_end() {
             self.on_connection_end(connection);
         });
@@ -161,13 +197,20 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
      * a response with the same RPC_ID and a random number of bytes as payload
      */
     TestSocketServer.prototype.on_frame = function(connection, frame) {
-        var rpc_id;
+        var self = this,
+            rpc_id;
 
         try {
             rpc_id = frame.readInt32BE();
             logger.log('TestSocketServer.on_frame: Received incoming frame with rpc_id: ' + rpc_id + ' and data: 0x'
                 + frame.toString('hex'));
-            this.send_response(connection, rpc_id);
+            if (this.stuck_before_response) {
+                this.connection_state[connection.id].timer_stuck_before = setTimeout(function stuck_response() {
+                    self.send_response(connection, rpc_id);
+                }, this.stuck_ms);
+            } else {
+                this.send_response(connection, rpc_id);
+            }
         } catch (err) {
             throw new Error('Error parsing input data: ' + util.inspect(err));
         }
@@ -178,14 +221,34 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
      * payload
      */
     TestSocketServer.prototype.send_response = function(connection, rpc_id) {
-        var random_data = generate_random_bytes(RESPONSE_PAYLOAD_MIN, RESPONSE_PAYLOAD_MAX),
-            response = new OffsetBuffer(random_data.length + 4 + 4); // include frame_length and rpc_id fields
+        var random_data = new Buffer(get_random_number(RESPONSE_PAYLOAD_MIN, RESPONSE_PAYLOAD_MAX)),
+            response = new OffsetBuffer(random_data.length + 4 + 4), // include frame_length and rpc_id fields
+            random_point,
+            part1,
+            part2;
 
         response.writeInt32BE(random_data.length + 4);
         response.writeInt32BE(rpc_id);
         response.copyFrom(random_data);
-        logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with ' + random_data.length + ' bytes');
-        connection.write(response.buf);
+
+        if (this.stuck_partial_response) {
+            random_point = get_random_number(1, response.buf.length);
+            part1 = response.buf.slice(0, random_point);
+            part2 = response.buf.slice(random_point);
+            if (connection != null) {
+                logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with partial bytes ' + part1.length + ' bytes out of ' + random_data.length);
+                connection.write(part1);
+                this.connection_state[connection.id].timer_stuck_partial = setTimeout(function stuck_partial() {
+                    logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with rest of bytes ' + part2.length + ' bytes out of ' + random_data.length);
+                    connection.write(part2);
+                }, this.stuck_ms);
+            }
+        } else {
+            if (connection != null) {
+                logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with ' + random_data.length + ' bytes');
+                connection.write(response.buf);
+            }
+        }
     };
 
     TestSocketServer.prototype.get_open_connections = function() {
@@ -212,14 +275,23 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
      * Cleanup when a connection is closed (planned and unplanned)
      */
     TestSocketServer.prototype.on_connection_end = function(connection) {
-        var frame_buffer = this.connection_state[connection.id].frame_buffer,
+        var state = this.connection_state[connection.id],
+            frame_buffer = state.frame_buffer,
             frame_length = frame_buffer.current_frame_length,
             current_length = frame_buffer.current_frame_buffer.length;
 
         logger.log('TestSocketServer.on_connection_end: Connection ended: ' + connection.id);
         // remove the relevant listeners and clear this state from our map
         connection.removeAllListeners('data');
+        connection.removeAllListeners('end');
+        connection.removeAllListeners('error');
         frame_buffer.removeAllListeners('frame');
+        if (state.timer_stuck_before) {
+            clearTimeout(state.timer_stuck_before);
+        }
+        if (state.timer_stuck_partial) {
+            clearTimeout(state.timer_stuck_partial);
+        }
         // let the user know that some data will be lost if a full frame wasn't completed
         if (frame_buffer.current_frame_buffer.length > 0) {
             logger.warn('TestSocketServer.on_connection_end: Input buffer not empty.  Expected frame size: ' +
@@ -227,6 +299,14 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
                 ', currently buffered: ' + current_length + ' bytes');
         }
         delete this.connection_state[connection.id];
+    };
+
+    /**
+     * Deal with errors on a specific socket
+     */
+    TestSocketServer.prototype.on_connection_error = function(connection, err) {
+        logger.log('TestSocketServer.on_connection_error: Error occurred: ' + util.inspect(err));
+        this.on_connection_end(connection);
     };
 
     /**
@@ -263,11 +343,11 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
     }
 
     /**
-     * Generate a random Buffer of min to max size
+     * Generate a random number in the range
+     * min inclusive, max exclusive
      */
-    function generate_random_bytes(min, max) {
-        var random_size = (Math.random() * (max - min)) + min;  // min inclusive, max exclusive
-        return new Buffer(random_size);
+    function get_random_number(min, max) {
+        return Math.floor((Math.random() * (max - min)) + min);
     }
 
     return TestSocketServer;
