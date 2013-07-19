@@ -48,7 +48,8 @@ The default options are:
     timeout_ms: 60000,
     stuck_ms: 30000,
     stuck_before_response: false,
-    stuck_partial_response: false
+    stuck_partial_response: false,
+    stuck_action: null
 }
 ```
 
@@ -68,6 +69,10 @@ timeout_ms passes or the client ends the connection.
 *stuck_partial_response*: Server will stop sending data (stuck) after receiving a request
 and after partial response data is sent for stuck_ms. This does not drop the connection until
 the timeout_ms passes or the client ends the connection.
+
+*stuck_action*: A function to call when the server gets "stuck".  By default (null) it does
+nothing but wait till the stuck_ms expires.  Note that the stuck_ms timeout is still in effect
+even if an action is provided.  It is passed the connection object as a parameter.
 
 ## Install
 

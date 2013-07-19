@@ -30,7 +30,7 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
     var RESPONSE_PAYLOAD_MAX = 2048;
 
     process.on('uncaughtException', function(err) {
-        logger.log('Uncaught exception: ' + err);
+        logger.log('TestSocketServer: Uncaught exception: ' + err);
         process.exit(-1);
     });
 
@@ -39,7 +39,8 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
      *      timeout_ms: 60000,
      *      stuck_ms: 30000,
      *      stuck_before_response: false,
-     *      stuck_partial_response: false
+     *      stuck_partial_response: false,
+     *      stuck_action: null
      * }
      *
      * timeout_ms: Main socket timeout.  If no activity occurs on a socket for this time, it will
@@ -54,6 +55,10 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
      * stuck_partial_response: Server will stop sending data (stuck) after receiving a request
      *      and after part of the response is sent for stuck_ms.  This does not drop the connection
      *      until the timeout_ms passes or the client ends the connection.
+     *
+     * stuck_action: A function to call when the server gets "stuck".  By default it does nothing
+     *      but wait till the stuck_ms expires.  Note that the stuck_ms timeout is still in effect
+     *      even if an action is provided.  It is passed the connection object as a parameter.
      *
      */
     function TestSocketServer(options) {
@@ -84,6 +89,14 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
          * timeout_ms passes or the client ends the connection.
          */
         this.stuck_partial_response = options.stuck_partial_response || false;
+
+        /**
+         * A function to call when the server gets "stuck".  By default it does nothing
+         * but wait till the stuck_ms expires. Note that the stuck_ms timeout is still in
+         * effect even if an action is provided. It is passed the connection object as a
+         * parameter.
+         */
+        this.stuck_action = options.stuck_action || null;
 
         /**
          * Keeps track of the current buffering state per connection
@@ -208,6 +221,9 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
                 this.connection_state[connection.id].timer_stuck_before = setTimeout(function stuck_response() {
                     self.send_response(connection, rpc_id);
                 }, this.stuck_ms);
+                if (this.stuck_action) {
+                    this.stuck_action.call(this, connection);
+                }
             } else {
                 this.send_response(connection, rpc_id);
             }
@@ -242,6 +258,9 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
                     logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with rest of bytes ' + part2.length + ' bytes out of ' + random_data.length);
                     connection.write(part2);
                 }, this.stuck_ms);
+                if (this.stuck_action) {
+                    this.stuck_action.call(this, connection);
+                }
             }
         } else {
             if (connection != null) {
