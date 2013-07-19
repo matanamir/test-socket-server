@@ -9,14 +9,14 @@ It expects the data to be sent in the following format:
 
 |frame_size|rpc id|   data    |
 |:--------:|:----:|:---------:|
-|    32    |  32  | *ignored* |
+|    4     |  4   | *ignored* |
 
 
 And returns random data between 100 and 2048 bytes in the following format:
 
 |frame_size|rpc id|random data|
 |:--------:|:----:|:---------:|
-|    32    |  32  | 100-2048  |
+|    4     |  4   | 100-2048  |
 
 Data is sent in Big-endian.
 
