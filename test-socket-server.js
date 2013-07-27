@@ -270,7 +270,9 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
             }
         } else {
             if (connection != null) {
-                logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with ' + random_data.length + ' bytes');
+                if (debug) {
+                    logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with ' + random_data.length + ' bytes');
+                }
                 connection.write(response.buf);
             }
         }
