@@ -17,7 +17,7 @@
  * Data is sent in Big-endian.
  *
  */
-module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) {
+module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, logger) {
 
     /**
      * Minimum size of random response payload (inclusive)
@@ -215,8 +215,10 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
 
         try {
             rpc_id = frame.readInt32BE();
-            logger.log('TestSocketServer.on_frame: Received incoming frame with rpc_id: ' + rpc_id + ' and data: 0x'
-                + frame.toString('hex'));
+            if (debug) {
+                logger.log('TestSocketServer.on_frame: Received incoming frame with rpc_id: ' + rpc_id + ' and data: 0x'
+                    + frame.toString('hex'));
+            }
             if (this.stuck_before_response) {
                 this.connection_state[connection.id].timer_stuck_before = setTimeout(function stuck_response() {
                     self.send_response(connection, rpc_id);
@@ -252,10 +254,14 @@ module.exports = function(FramingBuffer, OffsetBuffer, when, net, util, logger) 
             part1 = response.buf.slice(0, random_point);
             part2 = response.buf.slice(random_point);
             if (connection != null) {
-                logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with partial bytes ' + part1.length + ' bytes out of ' + random_data.length);
+                if (debug) {
+                    logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with partial bytes ' + part1.length + ' bytes out of ' + random_data.length);
+                }
                 connection.write(part1);
                 this.connection_state[connection.id].timer_stuck_partial = setTimeout(function stuck_partial() {
-                    logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with rest of bytes ' + part2.length + ' bytes out of ' + random_data.length);
+                    if (debug) {
+                        logger.log('TestSocketServer.send_response: Sending response to rpc_id: ' + rpc_id + ' with rest of bytes ' + part2.length + ' bytes out of ' + random_data.length);
+                    }
                     connection.write(part2);
                 }, this.stuck_ms);
                 if (this.stuck_action) {
