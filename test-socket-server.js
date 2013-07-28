@@ -22,12 +22,12 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
     /**
      * Minimum size of random response payload (inclusive)
      */
-    var RESPONSE_PAYLOAD_MIN = 100;
+    var RESPONSE_PAYLOAD_MIN = 50;
 
     /**
      * Maximum size of random response payload (exclusive)
      */
-    var RESPONSE_PAYLOAD_MAX = 2048;
+    var RESPONSE_PAYLOAD_MAX = 200;
 
     process.on('uncaughtException', function(err) {
         logger.log('TestSocketServer: Uncaught exception: ' + err);
