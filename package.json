@@ -1,6 +1,6 @@
 {
     "name": "test-socket-server",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "author": "Matan Amir <github-contrib@ematan.com> (http://www.n0tw0rthy.com)",
     "description": "Test socket server that sends back variable framed random data",
     "main": "index.js",
