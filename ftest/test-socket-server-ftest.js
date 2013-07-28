@@ -34,7 +34,9 @@ test('Test client connect -> client write full frame -> server response full fra
     }).then(function() {
         return client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]));
     }).then(function(frame) {
-        t.ok((frame.buf.length >= 100) && (frame.buf.length <= 2048), 'Test Socket server returns between 100 and 2048 bytes');
+        t.ok((frame.buf.length >= server.response_min_payload) && (frame.buf.length <= server.response_max_payload),
+            'Test Socket server returns between ' + server.response_min_payload +
+                ' and ' + server.response_max_payload + ' bytes');
         return client.close();
     }).then(function() {
         return server.close();
@@ -57,7 +59,9 @@ test('Test client connect -> client write full frame -> server response full fra
     }).then(function() {
             return client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]));
         }).then(function(frame) {
-            t.ok((frame.buf.length >= 100) && (frame.buf.length <= 2048), 'Test Socket server returns between 100 and 2048 bytes');
+            t.ok((frame.buf.length >= server.response_min_payload) && (frame.buf.length <= server.response_max_payload),
+                'Test Socket server returns between ' + server.response_min_payload +
+                    ' and ' + server.response_max_payload + ' bytes');
             return server.close();
         }).then(function() {
             t.end();

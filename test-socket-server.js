@@ -19,16 +19,6 @@
  */
 module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, logger) {
 
-    /**
-     * Minimum size of random response payload (inclusive)
-     */
-    var RESPONSE_PAYLOAD_MIN = 50;
-
-    /**
-     * Maximum size of random response payload (exclusive)
-     */
-    var RESPONSE_PAYLOAD_MAX = 200;
-
     process.on('uncaughtException', function(err) {
         logger.log('TestSocketServer: Uncaught exception: ' + err);
         process.exit(-1);
@@ -65,6 +55,16 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
         var self = this;
 
         options = options || {};
+
+        /**
+         * Minimum size of random response payload (inclusive)
+         */
+        this.response_min_payload = 50;
+
+        /**
+         * Maximum size of random response payload (exclusive)
+         */
+        this.response_max_payload = 200;
 
         /**
          * Server side socket timeout (connection will be ended after this amount of inactivity).
@@ -239,7 +239,7 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
      * payload
      */
     TestSocketServer.prototype.send_response = function(connection, rpc_id) {
-        var random_data = new Buffer(get_random_number(RESPONSE_PAYLOAD_MIN, RESPONSE_PAYLOAD_MAX)),
+        var random_data = new Buffer(get_random_number(this.response_min_payload, this.response_max_payload)),
             response = new OffsetBuffer(random_data.length + 4 + 4), // include frame_length and rpc_id fields
             random_point,
             part1,
