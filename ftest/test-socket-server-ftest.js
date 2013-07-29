@@ -3,7 +3,7 @@ var test = require('tap').test,
     FramingSocket = require('framing-socket'),
     util = require('util'),
     host = 'localhost',
-    port = 8111;
+    port = 8112;
 
 // -----------------------------------------------------
 // Test Socket Server Functional Tests
