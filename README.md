@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/matanamir/test-socket-server.png)](https://travis-ci.org/matanamir/test-socket-server)
 
-A socket server for testing clients.  Still a work-in-progress since i'll be adding to this as needed to test client
+A framing socket server for testing clients.  Still a work-in-progress since i'll be adding to this as needed to test client
 functionality.
 
 It expects the data to be sent in the following format:

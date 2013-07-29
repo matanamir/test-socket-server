@@ -17,7 +17,7 @@
  * Data is sent in Big-endian.
  *
  */
-module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, logger) {
+module.exports = function(FramingBuffer, OffsetBuffer, debug, net, util, logger) {
 
     process.on('uncaughtException', function(err) {
         logger.log('TestSocketServer: Uncaught exception: ' + err);
@@ -109,6 +109,9 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
         this.server = net.createServer(function on_connection_start(connection) {
             self.on_connection_start(connection);
         });
+        this.server.on('error', function on_server_error(err) {
+            self.on_server_error(err);
+        });
 
         /**
          * Flag to keep track of our listening status
@@ -120,24 +123,22 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
      * Used to bind a socket listener to the provided port.  Calls
      * the callback provided when the server binds successfully.
      */
-    TestSocketServer.prototype.listen = function(port) {
-        var self = this,
-            deferred = when.defer();
+    TestSocketServer.prototype.listen = function(port, callback) {
+        var self = this;
 
         this.server.listen(port, function on_listen() {
             self.on_listen(port);
-            deferred.resolve();
+            if (callback) {
+                callback();
+            }
         });
-
-        return deferred.promise;
     };
 
     /**
      * Closes the test socket server
      */
-    TestSocketServer.prototype.close = function() {
-        var self = this,
-            deferred = when.defer();
+    TestSocketServer.prototype.close = function(callback) {
+        var self = this;
 
         if (this.listening) {
             // go through and end all the open sockets
@@ -147,13 +148,22 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
             });
             this.server.close(function() {
                 self.on_close();
-                deferred.resolve();
+                if (callback) {
+                    callback();
+                }
             });
         } else {
-            deferred.resolve();
+            if (callback) {
+                callback();
+            }
         }
+    };
 
-        return deferred.promise;
+    /**
+     * Called on a server error event (not to be confused with connection specific errors).
+     */
+    TestSocketServer.prototype.on_server_error = function(err) {
+        logger.log('TestSocketServer.on_server_error: Error found: ' + util.inspect(err));
     };
 
     /**
@@ -278,10 +288,16 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, when, net, util, l
         }
     };
 
+    /**
+     * Returns an array of all open connections
+     */
     TestSocketServer.prototype.get_open_connections = function() {
         return Object.keys(this.connection_state);
     };
 
+    /**
+     * Closes an open connection based on the connection_id
+     */
     TestSocketServer.prototype.close_connection = function(connection_id) {
         var conn = this.connection_state[connection_id].connection;
         if (conn) {

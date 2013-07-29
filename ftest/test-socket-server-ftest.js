@@ -12,16 +12,17 @@ var test = require('tap').test,
 test('Start and stop the server', function (t) {
     var server = new TestSocketServer();
 
-    server.listen(port).then(function() {
-        t.ok(server.listening, 'Server started successfully');
-        return server.close();
-    }).then(function() {
+    function on_server_close() {
         t.ok(!server.listening, 'Server stopped successfully');
         t.end();
-    }).otherwise(function(err) {
-        t.ok(false, 'Error when trying to start/stop the server: ' + util.inspect(err));
-        t.end();
-    });
+    }
+
+    function on_server_listen() {
+        t.ok(server.listening, 'Server started successfully');
+        server.close(on_server_close);
+    }
+
+    server.listen(port, on_server_listen);
 });
 
 test('Test client connect -> client write full frame -> server response full frame -> client close', function (t) {
@@ -29,24 +30,35 @@ test('Test client connect -> client write full frame -> server response full fra
         client = create_client(),
         rpc_id = 1;
 
-    server.listen(port).then(function() {
-        return client.connect(host, port);
-    }).then(function() {
-        return client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]));
-    }).then(function(frame) {
+    function on_close() {
+        t.end();
+    }
+
+    function on_frame(err, frame) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
         t.ok((frame.buf.length >= server.response_min_payload) && (frame.buf.length <= server.response_max_payload),
             'Test Socket server returns between ' + server.response_min_payload +
                 ' and ' + server.response_max_payload + ' bytes');
-        return client.close();
-    }).then(function() {
-        return server.close();
-    }).then(function() {
-        t.end();
-    }).otherwise(function(err) {
-        t.ok(false, 'Error caught: ' + util.inspect(err));
-        t.end();
-        return server.close();
-    });
+        client.close();
+        server.close(on_close);
+    }
+
+    function on_connect(err) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
+        client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]), on_frame);
+    }
+
+    function on_listen() {
+        client.connect(host, port, on_connect);
+    }
+
+    server.listen(port, on_listen);
 });
 
 test('Test client connect -> client write full frame -> server response full frame -> server force close', function (t) {
@@ -54,22 +66,34 @@ test('Test client connect -> client write full frame -> server response full fra
         client = create_client(),
         rpc_id = 1;
 
-    server.listen(port).then(function() {
-        return client.connect(host, port);
-    }).then(function() {
-            return client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]));
-        }).then(function(frame) {
-            t.ok((frame.buf.length >= server.response_min_payload) && (frame.buf.length <= server.response_max_payload),
-                'Test Socket server returns between ' + server.response_min_payload +
-                    ' and ' + server.response_max_payload + ' bytes');
-            return server.close();
-        }).then(function() {
-            t.end();
-        }).otherwise(function(err) {
-            t.ok(false, 'Error caught: ' + util.inspect(err));
-            t.end();
-            return server.close();
-        });
+    function on_close() {
+        t.end();
+    }
+
+    function on_frame(err, frame) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
+        t.ok((frame.buf.length >= server.response_min_payload) && (frame.buf.length <= server.response_max_payload),
+            'Test Socket server returns between ' + server.response_min_payload +
+                ' and ' + server.response_max_payload + ' bytes');
+        server.close(on_close);
+    }
+
+    function on_connect(err) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
+        client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]), on_frame);
+    }
+
+    function on_listen() {
+        client.connect(host, port, on_connect);
+    }
+
+    server.listen(port, on_listen);
 });
 
 test('Test client connect -> client write full frame -> server stuck before response -> client timeout close', function (t) {
@@ -81,30 +105,39 @@ test('Test client connect -> client write full frame -> server stuck before resp
         }),
         rpc_id = 1;
 
+    function on_server_close() {
+        t.end();
+    }
+
     // on the client timeout, close up the connection
     client.on('timeout', function() {
-        client.close().then(function () {
-            t.ok(true, 'Client timed out waiting for response');
-            return server.close();
-        }).then(function() {
-            t.end();
-        });
+        client.close();
+        t.ok(true, 'Client timed out waiting for response');
+        server.close(on_server_close);
     });
 
-    server.listen(port).then(function() {
-        return client.connect(host, port);
-    }).then(function() {
-        return client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]));
-    }).then(function(frame) {
+    function on_frame(err, frame) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
         t.ok(false, 'Client should not have received response from the server');
-        return server.close();
-    }).then(function() {
-        t.end();
-    }).otherwise(function(err) {
-        t.ok(false, 'Error caught: ' + util.inspect(err));
-        t.end();
-        return server.close();
-    });
+        server.close(on_server_close);
+    }
+
+    function on_connect(err) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
+        client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]), on_frame);
+    }
+
+    function on_listen() {
+        client.connect(host, port, on_connect);
+    }
+
+    server.listen(port, on_listen);
 });
 
 test('Test client connect -> client write full frame -> server stuck partial response -> client timeout close', function (t) {
@@ -116,31 +149,46 @@ test('Test client connect -> client write full frame -> server stuck partial res
         }),
         rpc_id = 1;
 
+    function on_server_close() {
+        t.end();
+    }
+
     // on the client timeout, close up the connection
     client.on('timeout', function() {
-        client.close().then(function () {
-            t.ok(true, 'Client timed out waiting for frame');
-            return server.close();
-        }).then(function() {
-            t.end();
-        });
+        client.close();
+        t.ok(true, 'Client timed out waiting for frame');
+        server.close(on_server_close);
     });
 
-    server.listen(port).then(function() {
-        return client.connect(host, port);
-    }).then(function() {
-        return client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]));
-    }).then(function(frame) {
-        t.ok(false, 'Client should not have received full frame from the server');
-        return server.close();
-    }).then(function() {
-        t.end();
-    }).otherwise(function(err) {
-        t.ok(false, 'Error caught: ' + util.inspect(err));
-        t.end();
-        return server.close();
-    });
+    function on_frame(err, frame) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
+        t.ok(false, 'Client should not have received response from the server');
+        server.close(on_server_close);
+    }
+
+    function on_connect(err) {
+        if (err) {
+            errback(t, err, server);
+            return;
+        }
+        client.write(rpc_id, new Buffer([0x01, 0x02, 0x03]), on_frame);
+    }
+
+    function on_listen() {
+        client.connect(host, port, on_connect);
+    }
+
+    server.listen(port, on_listen);
 });
+
+function errback(t, err, server) {
+    t.ok(false, 'Error caught: ' + util.inspect(err));
+    t.end();
+    return server.close();
+}
 
 function create_server(options) {
     return new TestSocketServer(options);
