@@ -26,12 +26,16 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, net, util, logger)
 
     /**
      * You can provide options to override the defaults: {
+     *      find_free_port: false,
      *      timeout_ms: 60000,
      *      stuck_ms: 30000,
      *      stuck_before_response: false,
      *      stuck_partial_response: false,
      *      stuck_action: null
      * }
+     *
+     * find_free_port: If this is true and the server fails to listen on the provided port,
+     *      it will continue trying to find an available port in 10 port increments.
      *
      * timeout_ms: Main socket timeout.  If no activity occurs on a socket for this time, it will
      *      close the connection.
@@ -57,6 +61,12 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, net, util, logger)
         options = options || {};
 
         /**
+         * If find_free_port is set, this is the port increment to use when
+         * scanning for an available port.
+         */
+        this.port_increment = 10;
+
+        /**
          * Minimum size of random response payload (inclusive)
          */
         this.response_min_payload = 50;
@@ -65,6 +75,12 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, net, util, logger)
          * Maximum size of random response payload (exclusive)
          */
         this.response_max_payload = 200;
+
+        /**
+         * If this is true and the server fails to listen on the provided port,
+         * it will continue trying to find an available port in 10 port increments.
+         */
+        this.find_free_port = options.find_free_port || false;
 
         /**
          * Server side socket timeout (connection will be ended after this amount of inactivity).
@@ -109,9 +125,6 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, net, util, logger)
         this.server = net.createServer(function on_connection_start(connection) {
             self.on_connection_start(connection);
         });
-        this.server.on('error', function on_server_error(err) {
-            self.on_server_error(err);
-        });
 
         /**
          * Flag to keep track of our listening status
@@ -126,12 +139,29 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, net, util, logger)
     TestSocketServer.prototype.listen = function(port, callback) {
         var self = this;
 
-        this.server.listen(port, function on_listen() {
+        function on_error(err) {
+            var next_port = port + self.port_increment;
+
+            if (self.find_free_port && (err.code === 'EADDRINUSE')) {
+                console.log('Port: ' + port + ' in use, trying ' + next_port);
+                this.removeAllListeners('listening');
+                self.listen(next_port, callback);
+            } else {
+                self.on_server_error(err);
+            }
+        }
+
+        function on_server_listen() {
             self.on_listen(port);
             if (callback) {
                 callback();
             }
-        });
+        }
+
+        this.server.removeAllListeners('error');
+        this.server.on('error', on_error);
+        this.server.on('listening', on_server_listen);
+        this.server.listen(port);
     };
 
     /**
@@ -170,7 +200,14 @@ module.exports = function(FramingBuffer, OffsetBuffer, debug, net, util, logger)
      * Called when the listen binding succeeds
      */
     TestSocketServer.prototype.on_listen = function(port) {
+        var self = this;
+
         this.listening = true;
+        // once listen succeeds, set a default error handler
+        this.server.removeAllListeners('error');
+        this.server.on('error', function on_error(err) {
+            self.on_server_error(err);
+        });
         logger.log('TestSocketServer.on_listen: Server bound to port: ' + port);
     };
 

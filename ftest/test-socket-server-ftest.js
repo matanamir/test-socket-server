@@ -98,6 +98,7 @@ test('Test client connect -> client write full frame -> server response full fra
 
 test('Test client connect -> client write full frame -> server stuck before response -> client timeout close', function (t) {
     var server = create_server({
+            find_free_port: true,
             stuck_before_response: true
         }),
         client = create_client({
@@ -142,6 +143,7 @@ test('Test client connect -> client write full frame -> server stuck before resp
 
 test('Test client connect -> client write full frame -> server stuck partial response -> client timeout close', function (t) {
     var server = create_server({
+            find_free_port: true,
             stuck_partial_response: true
         }),
         client = create_client({
@@ -191,7 +193,9 @@ function errback(t, err, server) {
 }
 
 function create_server(options) {
-    return new TestSocketServer(options);
+    return new TestSocketServer(options || {
+        find_free_port: true
+    });
 }
 
 function create_client(options) {
